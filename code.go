@@ -10,23 +10,8 @@ import (
 	"sync"
 )
 
-func codeHandler(rw http.ResponseWriter, req *http.Request) {
-	// fmt.Print("+")
-	code := req.FormValue("code")
-
-	k := &CodeResponse{
-		Kod:   getCode(code),
-		Gmina: code,
-	}
-
-	m, err := json.Marshal(k)
-
-	if err != nil {
-		fmt.Fprintln(rw, "error:", err)
-	}
-
-	rw.Write(m)
-}
+var cache = make(map[string]*CodeResponse)
+var lock sync.Mutex
 
 type CodeResponse struct {
 	Kod    string
@@ -37,15 +22,27 @@ type CodeResponse struct {
 	WojewodztwoId int
 }
 
-func codeTextHandler(rw http.ResponseWriter, req *http.Request) {
+func codeJsonHandler(rw http.ResponseWriter, req *http.Request) {
 	// fmt.Print("+")
 	code := req.FormValue("code")
 
-	fmt.Fprintf(rw, "%s;%s", getCode(code), code)
+	r := getCode(code)
+	m, err := json.Marshal(r)
+
+	if err != nil {
+		fmt.Fprintln(rw, "error:", err)
+	}
+
+	rw.Write(m)
 }
 
-var cache = make(map[string]string)
-var lock sync.Mutex
+func codeTextHandler(rw http.ResponseWriter, req *http.Request) {
+	// fmt.Print("+")
+	code := req.FormValue("code")
+	r := getCode(code)
+
+	fmt.Fprintf(rw, "%s;%s", r.Kod, r.Powiat)
+}
 
 func codeTextCacheHandler(rw http.ResponseWriter, req *http.Request) {
 	// fmt.Print("+")
@@ -60,7 +57,7 @@ func codeTextCacheHandler(rw http.ResponseWriter, req *http.Request) {
 		cache[code] = r
 	}
 
-	fmt.Fprintf(rw, "%s;%s", r, code)
+	fmt.Fprintf(rw, "%s;%s", r.Kod, r.Powiat)
 }
 
 var db *sql.DB
@@ -73,21 +70,20 @@ func init() {
 	}
 }
 
-func getCode(code string) string {
-	rows, err := db.Query(fmt.Sprintf("SELECT id, kod FROM poczta where kod = '%s'", code))
+func getCode(code string) *CodeResponse {
+	rows, err := db.Query(fmt.Sprintf("SELECT kod, powiat, gmina, wojewodztwo FROM poczta where kod = '%s'", code))
 	if err != nil {
 		fmt.Println(err)
-		return ""
+		return nil
 	}
 
 	defer rows.Close()
 
+	cr := &CodeResponse{}
 	for rows.Next() {
-		var id int
-		var kod string
-		rows.Scan(&id, &kod)
-		return kod
+		rows.Scan(&cr.Kod, &cr.Powiat, &cr.Gmina, &cr.WojewodztwoId)
+		return cr
 	}
 
-	return ""
+	return nil
 }
