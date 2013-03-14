@@ -26,20 +26,30 @@ func codeJsonHandler(rw http.ResponseWriter, req *http.Request) {
 	// fmt.Print("+")
 	code := req.FormValue("code")
 
-	r := getCode(code)
+	r, err := getCode(code)
+	if err != nil {
+		fmt.Fprintln(rw, "error:", err)
+		return
+	}
+
 	m, err := json.Marshal(r)
 
 	if err != nil {
 		fmt.Fprintln(rw, "error:", err)
+		return
 	}
 
 	rw.Write(m)
 }
 
 func codeTextHandler(rw http.ResponseWriter, req *http.Request) {
-	// fmt.Print("+")
 	code := req.FormValue("code")
-	r := getCode(code)
+
+	r, err := getCode(code)
+	if err != nil {
+		fmt.Fprintln(rw, "error:", err)
+		return
+	}
 
 	fmt.Fprintf(rw, "%s;%s", r.Kod, r.Powiat)
 }
@@ -53,7 +63,12 @@ func codeTextCacheHandler(rw http.ResponseWriter, req *http.Request) {
 
 	r, ok := cache[code]
 	if !ok {
-		r = getCode(code)
+		r, err := getCode(code)
+
+		if err != nil {
+			fmt.Fprintln(rw, "error:", err)
+			return
+		}
 		cache[code] = r
 	}
 
@@ -70,20 +85,20 @@ func init() {
 	}
 }
 
-func getCode(code string) *CodeResponse {
-	rows, err := db.Query(fmt.Sprintf("SELECT kod, powiat, gmina, wojewodztwo FROM poczta where kod = '%s'", code))
-	if err != nil {
-		fmt.Println(err)
-		return nil
-	}
+func getCode(code string) (*CodeResponse, error) {
+	q := fmt.Sprintf("SELECT kod, powiat, gmina, wojewodztwo FROM poczta where kod = '%s'", code)
 
+	rows, err := db.Query(q)
+	if err != nil {
+		return nil, err
+	}
 	defer rows.Close()
 
 	cr := &CodeResponse{}
 	for rows.Next() {
 		rows.Scan(&cr.Kod, &cr.Powiat, &cr.Gmina, &cr.WojewodztwoId)
-		return cr
+		return cr, nil
 	}
 
-	return nil
+	return nil, fmt.Errorf("No code %s", code)
 }
